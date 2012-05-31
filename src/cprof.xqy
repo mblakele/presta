@@ -131,6 +131,10 @@ as item()*
   p:invoke($path, (), ())
 };
 
+(:
+ : TODO The value function is not very useful,
+ : because the original evaluation context is not available.
+ :)
 declare function p:value(
   $expr as xs:string)
 as item()*
@@ -164,6 +168,8 @@ as element(prof:report)*
 {
   p:report(false())
 };
+
+(: There is no prof:spawn, hence no cprof:spawn :)
 
 declare function p:xslt-eval(
   $stylesheet as element(),

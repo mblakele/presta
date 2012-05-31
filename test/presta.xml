@@ -25,9 +25,10 @@
       root="/Users/mblakele/Source/mblakele-presta/src/"
       database-name="Documents">
     <import prefix="p" ns="com.blakeley.presta" at="presta.xqy"/>
+    <import prefix="c" ns="com.blakeley.cprof" at="cprof.xqy"/>
   </environment>
 
-  <setup>p:install()</setup>
+  <setup note="install">p:install()</setup>
 
   <unit note="parse test" fatal="true">()</unit>
 
@@ -48,7 +49,7 @@
     <result xsi:type="xs:boolean">true</result>
     <expr>
       p:appkey-set('TEST'),
-      let $xqy := 'declare variable $ID external; xdmp:log("hello world!")'
+      let $xqy := 'xquery version "1.0-ml"; xdmp:log("hello world!")'
       return p:prepare($xqy) instance of xs:unsignedLong
     </expr>
   </unit>
@@ -57,7 +58,7 @@
     <result xsi:type="xs:integer">55</result>
     <expr>
       p:appkey-set('TEST'),
-      let $xqy := 'declare variable $ID external; $ID'
+      let $xqy := 'xquery version "1.0-ml"; declare variable $ID external; $ID'
       let $presta-id := p:prepare($xqy)
       return sum(
         for $i in 1 to 10 return p:invoke(
@@ -65,30 +66,190 @@
     </expr>
   </unit>
 
+  <!-- result will be empty -->
   <unit note="xslt-invoke prepared" fatal="true">
-    <!-- result will be empty -->
+    p:appkey-set('TEST'),
+    let $source := &lt;xsl:stylesheet
+      xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+      xmlns:xdmp="http://marklogic.com/xdmp"
+      version="2.0">
+      &lt;xsl:template match="*">
+      &lt;xsl:apply-templates select="xdmp:sleep(5)"/>
+      &lt;/xsl:template>
+    &lt;/xsl:stylesheet>
+    let $presta-id := p:prepare($source)
+    return p:xslt-invoke($presta-id, &lt;test/>)/*
+  </unit>
+
+  <!-- result will be empty -->
+  <unit note="library import">
+    p:appkey-set('TEST'),
+    p:import(
+      'lib-test.xqy', '
+        xquery version "1.0-ml";
+        module namespace t="com.blakeley.presta.test";
+        declare function t:now() { fn:current-dateTime() };')
+  </unit>
+
+  <unit note="library usage">
+    <result xsi:type="xs:boolean">true</result>
     <expr>
       p:appkey-set('TEST'),
-      let $source := &lt;xsl:stylesheet
-        xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
-        xmlns:xdmp="http://marklogic.com/xdmp"
-        version="2.0">
-        &lt;xsl:template match="*">
-        &lt;xsl:apply-templates select="xdmp:sleep(5)"/>
-        &lt;/xsl:template>
-      &lt;/xsl:stylesheet>
-      let $presta-id := p:prepare($source)
-      return p:xslt-invoke($presta-id, &lt;test/>)/*
+      p:invoke(
+        p:prepare(
+          'xquery version "1.0-ml";
+          import module namespace t="com.blakeley.presta.test"
+           at "lib-test.xqy";
+          t:now() instance of xs:dateTime'))
     </expr>
   </unit>
 
-<!-- TODO more unit tests -->
+  <unit note="spawn prepared">
+    <expr>
+      p:appkey-set('TEST'),
+      p:spawn(
+        p:prepare('xquery version "1.0-ml"; xdmp:log("hello world")'))
+    </expr>
+  </unit>
+
+  <unit note="spawn prepared, with result">
+    <result xsi:type="xs:integer">55</result>
+    <expr>
+      p:appkey-set('TEST'),
+      let $xqy := 'xquery version "1.0-ml"; declare variable $ID external; $ID'
+      let $presta-id := p:prepare($xqy)
+      return sum(
+        for $i in 1 to 10 return p:spawn(
+          $presta-id,
+          (xs:QName('ID'), $i),
+          &lt;options xmlns="xdmp:eval">
+            &lt;result>true&lt;/result>
+          &lt;/options>))
+    </expr>
+  </unit>
+
+  <unit note="spawn prepared, with results and parallelism">
+    <expr>
+      p:appkey-set('TEST'),
+      let $presta-id := p:prepare('xquery version "1.0-ml"; xdmp:sleep(500)')
+      for $i in 1 to 4 return p:spawn(
+        $presta-id, (),
+        &lt;options xmlns="xdmp:eval">
+          &lt;result>true&lt;/result>
+        &lt;/options>)
+    </expr>
+  </unit>
 
   <unit note="forget-all">
     p:appkey-set('TEST'),
     p:forget-all()
   </unit>
 
-  <teardown>p:uninstall()</teardown>
+  <unit note="cprof default disabled">
+    <result xsi:type="xs:boolean">0</result>
+    <expr>c:enabled()</expr>
+  </unit>
+
+  <unit note="cprof empty report">
+    <result xsi:type="xs:boolean">1</result>
+    <expr>empty(c:report())</expr>
+  </unit>
+
+  <unit note="profile with eval">
+    <result>2</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:eval('xdmp:sleep(5)'),
+      count(c:report())
+    </expr>
+  </unit>
+
+  <unit note="profile with eval, two args">
+    <result>2</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:eval(
+        'declare variable $millis external; xdmp:sleep($millis)',
+        (xs:QName('millis'), 5)),
+      count(c:report())
+    </expr>
+  </unit>
+
+  <unit note="profile with eval, three args">
+    <result>2</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:eval(
+        'define variable $millis external xdmp:sleep($millis)',
+        (xs:QName('millis'), 5),
+        <options xmlns="xdmp:eval">
+          <default-xquery-version>0.9-ml</default-xquery-version>
+        </options>),
+      count(c:report())
+    </expr>
+  </unit>
+
+  <unit note="profile with invoke">
+    <result>2</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:invoke('test.xqy'),
+      count(c:report())
+    </expr>
+  </unit>
+
+  <unit note="profile with value">
+    <result>2</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:value('xdmp:sleep(5)'),
+      count(c:report())
+    </expr>
+  </unit>
+
+  <unit note="profile with xslt-eval">
+    <result>2</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:xslt-eval(
+      &lt;xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+      xmlns:xdmp="http://marklogic.com/xdmp"
+      version="2.0">
+      &lt;xsl:template match="*">
+      &lt;xsl:apply-templates select="xdmp:sleep(5)"/>
+      &lt;/xsl:template>
+      &lt;/xsl:stylesheet>,
+      &lt;test/>)/*,
+      count(c:report())
+    </expr>
+  </unit>
+
+  <unit note="profile with xslt-invoke">
+    <result>2</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:xslt-invoke('test.xsl', &lt;test/>)/*,
+      count(c:report())
+    </expr>
+  </unit>
+
+  <unit note="profile with eval and merge">
+    <result>1</result>
+    <expr>
+      c:enable(),
+      xdmp:sleep(5),
+      c:eval('xdmp:sleep(5)'),
+      count(c:report(true()))
+    </expr>
+  </unit>
+
+  <teardown note="uninstall">p:uninstall()</teardown>
 
 </suite>

@@ -30,6 +30,18 @@ If you will use conditional profiling, import cprof too.
 
 You can also import `cprof.xqy` without importing `presta.xqy`.
 
+* Call `presta:install`. This need only be done once per modules database.
+The modules database will be the one you have configured
+for the current application server, or the built-in `Modules` database
+if the current appserver is configured to use the filesystem for modules.
+In most configurations all appservers will default to the filesystem,
+so Presta will store all modules in the `Modules` database.
+
+    import module namespace presta="com.blakeley.presta"
+      at "/path/to/presta.xqy";
+
+    presta:install()
+
 Code Management
 ---
 
@@ -38,7 +50,14 @@ and largely dispenses with the need to specify module storage.
 This can be helpful if you want your application to deploy automatically,
 but still want the performance benefits of module caching.
 
-Invoking a prepared statement works just like `xdmp:invoke`.
+Presta will store modules in a database. This will be the one configured
+for the current application server, or the built-in `Modules` database
+if the current appserver is configured to use the filesystem for modules.
+In most configurations all appservers will default to the filesystem,
+so Presta will store all modules in the `Modules` database.
+
+Preparing a statement is simple, and Invoking a prepared statement
+works just like `xdmp:invoke`.
 
     (: presta:prepare returns an xs:unsignedLong id,
      : which can be used to refer to the prepared statement.
@@ -51,27 +70,34 @@ Invoking a prepared statement works just like `xdmp:invoke`.
     return presta:invoke(
       $presta-id, (xs:QName('ID'), $i), $invoke-options)
 
+Or you can spawn an asynchronous task:
+
+    presta:spawn(
+      $presta-id, (xs:QName('ID'), $i), $invoke-options)
+
 You can also prepare XSL statements with `presta:prepare`.
 The caller is responsible for knowing whether a particular Presta id
 represents an XQuery module or an XSLT module,
 and calling `presta:invoke` or `presta:xslt-invoke` as appropriate.
+Note that there is no `preset:xslt-spawn`,
+simply because there is no `xdmp:xslt-spawn`.
 
 Your XQuery or XSLT may rely on one or more library modules.
 Presta can also manage these.
 
-    presta:library-prepare('lib.xqy', $library-xqy-as-string)
+    presta:import('lib.xqy', $library-xqy-as-string)
 
 Library module paths are set using the first parameter, and must not conflict.
-Calling `presta:library-prepare`
-on a library module that already exists will replace it,
-if the new XQuery has a different `xdmp:hash64` checksum.
+Calling `presta:import` on a library module that already exists
+will replace it, so long as the new XQuery
+has a different `xdmp:hash64` checksum.
 
 In most cases, repeating `presta:prepare`
-will be cheaper that repeating `presta:library-prepare`.
+will be cheaper that repeating `presta:import`.
 But try to prepare both statements and libraries just once,
 when your application is installed or initializes.
 Otherwise Presta will do extra work for each call
-to `presta:prepare` or `presta:library-prepare`,
+to `presta:prepare` or `presta:import`,
 and that may become a bottleneck.
 
 To avoid conflicts when multiple applications use Presta in the same cluster,
@@ -81,12 +107,23 @@ The current value of the key is available via `presta:appkey`.
 If you wish to share the presta cache between appservers,
 you can set your own key using `presta:appkey-set`.
 
+You can delete everything associated with an application key
+using `presta:forget-all`. This will use the default appkey,
+or whatever appkey you set for the request.
+
+    presta:appkey-set('MY-APP'),
+    presta:forget-all()
+
+You can also uninstall Presta from the modules database.
+This undoes the work done by `presta:install`.
+
+    presta:uninstall()
+
 This release of Presta sets appropriate defaults for security,
 based on the roles held by the user that calls `presta:install`
 and `presta:prepare`.
-TODO make this configurable? presta role(s)?
 
-TODO
+TODO make security configurable? presta role(s)?
 
 Concurrent Evaluation
 ---
@@ -94,35 +131,53 @@ Concurrent Evaluation
 MarkLogic runs a special Task Server on every host,
 which can be used for asynchronous background tasks.
 Normally you would write a module and call `xdmp:spawn`
-to run it on the Task Server. Presta can manage the module storage for you,
-making concurrent evaluation easier.
+to run it on the Task Server. This task becomes easier with Presta,
+because Presta manages the module storage for you.
 
-    (: xdmp:spawn relies on a pre-existing module,
-     : so it cannot eval an arbitrary XQuery string.
+    (: The built-in xdmp:spawn function relies on a module.
+     : This module must exist on the server filesystem,
+     : or in a modules database.
+     : So xdmp:spawn cannot eval an arbitrary XQuery string.
      :)
     xdmp:spawn('my-module.xqy')
 
     (: presta:spawn relies on a pre-existing module,
      : so it cannot eval an arbitrary XQuery string.
-TODO spawn-eval or eval-concurrent ?
+     : Note that if you use the same query more than once,
+     : it is more efficient to prepare it and retain the id.
      :)
-    presta:spawn-eval('xdmp:log("hello world!")')
-
-TODO discuss return variables, which require ML5 or later
-
-    (: Presta also supports prepared statements,
-     : which will be more efficient when the same task
-     : runs multiple times.
-     :)
-    presta:spawn-prepared($presta-id)
+    presta:spawn(
+      presta:prepare('xdmp:log("hello world!")'))
 
 If you wish to see the result of your spawned task
 returned by any of the `presta:spawn*` functions,
 be sure to set `<result>true</result>` in the spawn options.
+This feature requires MarkLogic Server 5.0 or later.
 
-Like `presta:eval`, `presta:spawn-eval` supports conditional profiling.
+    presta:spawn(
+      presta:prepare('"hello world!"'),
+      (),
+      <options xmlns="xdmp:eval">
+        <result>true</result>
+      </options>)
 
-TODO
+This permits a fairly straightforward technique for single-host parallelism.
+
+    let $presta-id := p:prepare('xquery version "1.0-ml"; xdmp:sleep(1000)')
+    for $i in 1 to 4 return p:spawn(
+      $presta-id, (),
+      <options xmlns="xdmp:eval">
+        <result>true</result>
+      </options>),
+    xdmp:elapsed-time()
+
+On a two-core host, the four 1000-ms sleeps run in just over 2-sec.
+Without parallelism, they would require 4-sec.
+Your exact results will vary according to the number of server cores.
+
+Unlike `presta:invoke`, `presta:spawn` does not support conditional profiling
+using `cprof.xqy`. This is because there is no `prof:spawn`,
+and hence no `cprof:spawn`.
 
 Conditional Profiling
 ---
@@ -169,6 +224,8 @@ If you get back the empty sequence, then profiling was not enabled.
 This replaces the older cprof library. Since Presta needed to
 integrate conditional profiling, it seemed easiest to merge the two projects.
 
+Note that there is no `prof:spawn`, and hence no `cprof:spawn`.
+
 Note that `cprof:value` is implemented, but will exhibit problems
 when the supplied expression relies on the caller's context.
 This is because the `xdmp:value` call will be made
@@ -189,7 +246,7 @@ all of the histograms merged into one `prof:histogram` element.
 This may be a little confusing, since the sum of
 all the histogram expressions may exceed headline elapsed time.
 
-The functions in this library are lightweight,
+The cprof functions are lightweight,
 so you do not need to disable them for production.
 
 Test Cases

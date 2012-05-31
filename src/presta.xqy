@@ -28,7 +28,7 @@ declare namespace xe = "xdmp:eval";
 
 import module namespace cprof = "com.blakeley.cprof" at "cprof.xqy" ;
 
-declare variable $APPKEY as xs:string := xdmp:integer-to-hex(xdmp:server()) ;
+declare variable $APPKEY as xs:string := p:appkey-default() ;
 
 declare variable $MODULES-ROOT as xs:string := "com.blakeley.presta/" ;
 
@@ -72,21 +72,33 @@ as empty-sequence()
   (: TODO configurable permissions? probably need a presta role or roles...
    :)
   let $path := concat($MODULES-ROOT, 'store.xqy')
+  (: Unless forced, this module will never override hashed paths,
+   : which are XQuery main modules or XSLT stylesheets.
+   : Unless forced, it will check the hash of library modules.
+   : Because this module runs in update mode,
+   : it must test with fn:exists rather than xdmp:exists.
+   : This forces a lock.
+   :)
   let $source := text {
     'xquery version "1.0-ml";
     declare variable $FORCED as xs:boolean external;
+    declare variable $HASH as xs:unsignedLong external;
     declare variable $PATH as xs:string external;
     declare variable $SOURCE as node() external;
     declare variable $ROLES := xdmp:get-current-roles() ;
-    if (not($FORCED) and xdmp:exists(doc($PATH))) then ()
+    if (not($FORCED)
+      and exists(doc($PATH))
+      and (ends-with($PATH, concat("/", $HASH))
+        or xdmp:hash64(doc($PATH)) eq $HASH)) then ()
     else xdmp:document-insert(
       $PATH, $SOURCE,
       xdmp:permission($ROLES, ("read", "execute", "update")))' }
   return xdmp:eval(
     $source,
-    (xs:QName('PATH'), $path,
-      xs:QName('SOURCE'), $source,
-      xs:QName('FORCED'), $forced),
+    (xs:QName('FORCED'), $forced,
+      xs:QName('HASH'), xdmp:hash64($source),
+      xs:QName('PATH'), $path,
+      xs:QName('SOURCE'), $source),
     $INSTALL-OPTIONS)
 };
 
@@ -99,7 +111,7 @@ as empty-sequence()
 declare function p:modules-directory-delete($path as xs:string)
 as empty-sequence()
 {
-  xdmp:eval(
+  cprof:eval(
     'declare variable $PATH external ;
     if (not(xdmp:directory($PATH, "infinity"))) then ()
     else xdmp:directory-delete($PATH)',
@@ -117,6 +129,12 @@ declare function p:appkey()
 as xs:string
 {
   $APPKEY
+};
+
+declare function p:appkey-default()
+as xs:string
+{
+  xdmp:integer-to-hex(xdmp:server())
 };
 
 declare function p:appkey-set($appkey as xs:string)
@@ -159,11 +177,12 @@ as xs:unsignedLong
 {
   $hash,
   (: TODO would be nice to do without the store.xqy module... :)
-  xdmp:invoke(
+  cprof:invoke(
     'store.xqy',
-    (xs:QName('PATH'), $path,
-      xs:QName('SOURCE'), $source,
-      xs:QName('FORCED'), $forced),
+    (xs:QName('FORCED'), $forced,
+      xs:QName('HASH'), $hash,
+      xs:QName('PATH'), $path,
+      xs:QName('SOURCE'), $source),
     $INSTALL-OPTIONS)
 };
 
@@ -175,6 +194,26 @@ as xs:unsignedLong
 {
   p:store(
     p:path(xdmp:integer-to-hex($hash)), $hash, $source, $forced)
+};
+
+declare function p:import(
+  $path as xs:string,
+  $source as xs:string,
+  $forced as xs:boolean)
+as empty-sequence()
+{
+  p:store(
+    p:path($path), xdmp:hash64($source), text { $source }, $forced)[0]
+};
+
+declare function p:import(
+  $path as xs:string,
+  $source as xs:string)
+as empty-sequence()
+{
+  (: Cannot call 3-arg import, because path would be processed twice. :)
+  p:store(
+    p:path($path), xdmp:hash64($source), text { $source }, false())[0]
 };
 
 declare function p:prepare(
@@ -269,6 +308,34 @@ declare function p:xslt-invoke(
 as document-node()*
 {
   p:xslt-invoke($id, (), (), ())
+};
+
+declare function p:spawn(
+  $id as xs:unsignedLong,
+  $vars as item()*,
+  $options as element(xe:options)?)
+as item()*
+{
+  (: There is no prof:spawn, hence no cprof:spawn :)
+  xdmp:spawn(
+    xdmp:integer-to-hex($id),
+    $vars,
+    p:options-rewrite($options))
+};
+
+declare function p:spawn(
+  $id as xs:unsignedLong,
+  $vars as item()*)
+as item()*
+{
+  p:spawn($id, $vars, ())
+};
+
+declare function p:spawn(
+  $id as xs:unsignedLong)
+as item()*
+{
+  p:spawn($id, (), ())
 };
 
 (: presta.xqy :)
