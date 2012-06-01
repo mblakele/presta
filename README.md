@@ -42,6 +42,15 @@ so Presta will store all modules in the `Modules` database.
 
     presta:install()
 
+This also configures security roles and privileges for Presta.
+See "Security" for more details.
+
+To remove Presta from your system, call `presta:uninstall`.
+This will remove all modules stored by Presta,
+as well as the Presta security roles and privileges.
+
+    presta:uninstall()
+
 Code Management
 ---
 
@@ -113,17 +122,6 @@ or whatever appkey you set for the request.
 
     presta:appkey-set('MY-APP'),
     presta:forget-all()
-
-You can also uninstall Presta from the modules database.
-This undoes the work done by `presta:install`.
-
-    presta:uninstall()
-
-This release of Presta sets appropriate defaults for security,
-based on the roles held by the user that calls `presta:install`
-and `presta:prepare`.
-
-TODO make security configurable? presta role(s)? probably an amp for store...
 
 Concurrent Evaluation
 ---
@@ -249,6 +247,39 @@ all the histogram expressions may exceed headline elapsed time.
 
 The cprof functions are lightweight,
 so you do not need to disable them for production.
+
+Security
+---
+
+Much of Presta's functionality depends on built-in MarkLogic features,
+which are protected by execute privileges.
+The admin user has access to all these features.
+For non-admin users, `presta:install` creates a role named `presta`.
+Granted this role enables these functions:
+
+* `presta:prepare`
+* `presta:invoke`
+
+To call `presta:spawn`, the user must have additional privileges.
+
+* `xdmp-spawn`
+* `xdmp-spawn-modules-change`
+
+To call `presta:xslt-invoke`, the user must have additional privileges.
+
+* `xdmp-xslt-invoke`
+* `xdmp-xslt-invoke-modules-change`
+
+To call `presta:forget-all`, the user must have additional privileges.
+
+* `xdmp-eval`
+* `xdmp-eval-in`
+* `xdmp-eval-modules-change`
+
+You may add these privileges to the `presta` role, or create your own roles.
+
+Each of the cprof functions calls the corresponding `xdmp` or `prof` functions,
+and requires the appropriate privileges.
 
 Test Cases
 ---

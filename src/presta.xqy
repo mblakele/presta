@@ -220,7 +220,7 @@ as empty-sequence()
   let $put := map:put(
     $config, 'roles',
     element sec:role { element sec:role-name { 'presta' } })
-  return xdmp:eval(
+  return cprof:eval(
     'xquery version "1.0-ml";
      import module namespace p = "com.blakeley.presta" at "presta.xqy";
      declare option xdmp:update "true";
@@ -258,7 +258,7 @@ as empty-sequence()
         element sec:action { $MODULES-ROOT },
         element sec:kind { 'uri' },
         element sec:role-name { 'presta' } }))
-  return xdmp:eval(
+  return cprof:eval(
     'xquery version "1.0-ml";
      import module namespace p = "com.blakeley.presta" at "presta.xqy";
      declare option xdmp:update "true";
@@ -293,7 +293,7 @@ as empty-sequence()
       $PATH, $SOURCE,
       xdmp:permission(
         xdmp:role("presta"), ("execute", "insert", "read", "update")))' }
-  return xdmp:eval(
+  return cprof:eval(
     $source,
     (xs:QName('FORCED'), $forced,
       xs:QName('HASH'), xdmp:hash64($source),
@@ -362,7 +362,7 @@ as empty-sequence()
 {
   p:assert-admin('uninstall'),
   p:modules-directory-delete($MODULES-ROOT),
-  xdmp:eval(
+  cprof:eval(
     'xquery version "1.0-ml";
      import module namespace p = "com.blakeley.presta" at "presta.xqy";
      p:uninstall-security-privileges() ;
@@ -469,9 +469,7 @@ declare function p:import(
   $source as xs:string)
 as empty-sequence()
 {
-  (: Cannot call 3-arg import, because path would be processed twice. :)
-  p:store(
-    p:path($path), xdmp:hash64($source), text { $source }, false())[0]
+  p:import($path, $source, false())
 };
 
 declare function p:prepare(
@@ -571,15 +569,34 @@ as document-node()*
 declare function p:spawn(
   $id as xs:unsignedLong,
   $vars as item()*,
-  $options as element(xe:options)?)
+  $options as element(xe:options)?,
+  $retry as xs:integer)
 as item()*
 {
   (: There is no prof:spawn, hence no cprof:spawn :)
-  xdmp:spawn(
+  if (not($retry)) then xdmp:spawn(
     xdmp:integer-to-hex($id),
     $vars,
     p:options-rewrite($options))
-  (: TODO automatic retry for spawn and MAXTASKS :)
+  else try {
+    (: try-catch interferes with parallelism? :)
+    xdmp:spawn(
+      xdmp:integer-to-hex($id),
+      $vars,
+      p:options-rewrite($options)) }
+  catch ($ex) {
+    if ($ex/error:code eq 'XDMP-MAXTASKS') then () else xdmp:rethrow(),
+    xdmp:sleep($retry),
+    p:spawn($id, $vars, $options, 2 * $retry) }
+};
+
+declare function p:spawn(
+  $id as xs:unsignedLong,
+  $vars as item()*,
+  $options as element(xe:options)?)
+as item()*
+{
+  p:spawn($id, $vars, $options, 0)
 };
 
 declare function p:spawn(
