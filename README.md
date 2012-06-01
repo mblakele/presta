@@ -17,18 +17,8 @@ Installation
 ---
 
 * Clone this repository
+
 * Copy the `cprof.xqy` and `presta.xqy` files into your module root
-* When you want to use presta functionality, import the library module.
-
-    import module namespace presta="com.blakeley.presta"
-      at "/path/to/presta.xqy";
-
-If you will use conditional profiling, import cprof too.
-
-    import module namespace presta="com.blakeley.cprof"
-      at "/path/to/cprof.xqy";
-
-You can also import `cprof.xqy` without importing `presta.xqy`.
 
 * Call `presta:install`. This need only be done once per modules database.
 The modules database will be the one you have configured
@@ -50,6 +40,22 @@ This will remove all modules stored by Presta,
 as well as the Presta security roles and privileges.
 
     presta:uninstall()
+
+Usage
+---
+
+When you want to use presta functionality, import the library module.
+
+    import module namespace presta="com.blakeley.presta"
+      at "/path/to/presta.xqy";
+
+If you will use conditional profiling, import cprof too.
+
+    import module namespace presta="com.blakeley.cprof"
+      at "/path/to/cprof.xqy";
+
+You can also import `cprof.xqy` without importing `presta.xqy`.
+Note that if you only intend to use cprof, you can skip `presta:install`.
 
 Code Management
 ---
