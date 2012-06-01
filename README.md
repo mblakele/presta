@@ -20,7 +20,9 @@ Installation
 
 * Copy the `cprof.xqy` and `presta.xqy` files into your module root
 
-* Call `presta:install`. This need only be done once per modules database.
+* Call `presta:install`.
+
+This need only be done once per modules database.
 The modules database will be the one you have configured
 for the current application server, or the built-in `Modules` database
 if the current appserver is configured to use the filesystem for modules.
