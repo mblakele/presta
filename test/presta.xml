@@ -30,14 +30,61 @@
 
   <setup note="install">p:install()</setup>
 
+  <setup note="test role">
+    <environment database-name="Security" />
+    <expr>
+      p:install-security-roles(
+        element sec:role {
+          element sec:role-name { 'presta-test' } })
+    </expr>
+  </setup>
+
+  <setup note="test role privileges">
+    <environment database-name="Security" />
+    <!--
+        These roles are not strictly necessary for presta:prepare,
+        but are needed for other functionality such as xslt or forget-all.
+     -->
+    <expr>
+      p:install-security-privileges(
+        for $p in (
+          'xdmp-eval', 'xdmp-eval-in', 'xdmp-eval-modules-change',
+          'xdmp-xslt-invoke', 'xdmp-xslt-invoke-modules-change',
+          'xdmp-spawn', 'xdmp-spawn-modules-change')
+        return element sec:privilege {
+          element sec:privilege-name { replace($p, '^xdmp-', 'xdmp:') },
+          element sec:action {
+            concat(
+              'http://marklogic.com/xdmp/privileges/',
+              replace($p, '^xdmp-xslt-', 'xslt-')) },
+          element sec:kind { 'execute' },
+          element sec:role-name { 'presta-test' } })
+    </expr>
+  </setup>
+
+  <setup note="test user configuration">
+    <environment database-name="Security" />
+    <expr>
+      p:install-security-users(
+        element sec:user {
+          element sec:user-name { 'presta-test' },
+          element sec:password {
+            xdmp:integer-to-hex(xdmp:random()) },
+          element sec:role-name { 'presta' },
+          element sec:role-name { 'presta-test' } })
+    </expr>
+  </setup>
+
   <unit note="parse test" fatal="true">()</unit>
 
   <unit note="appkey">
+    <environment user-name="presta-test" />
     <result xsi:type="xs:boolean">true</result>
     <expr>xdmp:hex-to-integer(p:appkey()) eq xdmp:server()</expr>
   </unit>
 
   <unit note="appkey-set">
+    <environment user-name="presta-test" />
     <result xsi:type="xs:string">TEST</result>
     <expr>
       p:appkey-set('TEST'),
@@ -46,6 +93,7 @@
   </unit>
 
   <unit note="prepare">
+    <environment user-name="presta-test" />
     <result xsi:type="xs:boolean">true</result>
     <expr>
       p:appkey-set('TEST'),
@@ -55,6 +103,7 @@
   </unit>
 
   <unit note="invoke prepared">
+    <environment user-name="presta-test" />
     <result xsi:type="xs:integer">55</result>
     <expr>
       p:appkey-set('TEST'),
@@ -68,6 +117,8 @@
 
   <!-- result will be empty -->
   <unit note="xslt-invoke prepared" fatal="true">
+    <environment user-name="presta-test" />
+    <expr>
     p:appkey-set('TEST'),
     let $source := &lt;xsl:stylesheet
       xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
@@ -79,19 +130,24 @@
     &lt;/xsl:stylesheet>
     let $presta-id := p:prepare($source)
     return p:xslt-invoke($presta-id, &lt;test/>)/*
+    </expr>
   </unit>
 
   <!-- result will be empty -->
   <unit note="library import">
+    <environment user-name="presta-test" />
+    <expr>
     p:appkey-set('TEST'),
     p:import(
       'lib-test.xqy', '
         xquery version "1.0-ml";
         module namespace t="com.blakeley.presta.test";
         declare function t:now() { fn:current-dateTime() };')
+    </expr>
   </unit>
 
   <unit note="library usage">
+    <environment user-name="presta-test" />
     <result xsi:type="xs:boolean">true</result>
     <expr>
       p:appkey-set('TEST'),
@@ -105,6 +161,7 @@
   </unit>
 
   <unit note="spawn prepared">
+    <environment user-name="presta-test" />
     <expr>
       p:appkey-set('TEST'),
       p:spawn(
@@ -113,6 +170,7 @@
   </unit>
 
   <unit note="spawn prepared, with result">
+    <environment user-name="presta-test" />
     <result xsi:type="xs:integer">55</result>
     <expr>
       p:appkey-set('TEST'),
@@ -129,6 +187,7 @@
   </unit>
 
   <unit note="spawn prepared, with results and parallelism">
+    <environment user-name="presta-test" />
     <expr>
       p:appkey-set('TEST'),
       let $presta-id := p:prepare('xquery version "1.0-ml"; xdmp:sleep(500)')
@@ -141,9 +200,14 @@
   </unit>
 
   <unit note="forget-all">
+    <environment user-name="presta-test" />
+    <expr>
     p:appkey-set('TEST'),
     p:forget-all()
+    </expr>
   </unit>
+
+  <!-- cprof tests -->
 
   <unit note="cprof default disabled">
     <result xsi:type="xs:boolean">0</result>
@@ -249,6 +313,26 @@
       count(c:report(true()))
     </expr>
   </unit>
+
+  <teardown note="remove test user">
+    <environment database-name="Security" />
+    <expr>
+      import module "http://marklogic.com/xdmp/security"
+        at "/MarkLogic/security.xqy" ;
+
+      sec:remove-user('presta-test')
+    </expr>
+  </teardown>
+
+  <teardown note="remove test role">
+    <environment database-name="Security" />
+    <expr>
+      import module "http://marklogic.com/xdmp/security"
+        at "/MarkLogic/security.xqy" ;
+
+      sec:remove-role('presta-test')
+    </expr>
+  </teardown>
 
   <teardown note="uninstall">p:uninstall()</teardown>
 

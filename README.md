@@ -123,7 +123,7 @@ This release of Presta sets appropriate defaults for security,
 based on the roles held by the user that calls `presta:install`
 and `presta:prepare`.
 
-TODO make security configurable? presta role(s)?
+TODO make security configurable? presta role(s)? probably an amp for store...
 
 Concurrent Evaluation
 ---
@@ -163,8 +163,9 @@ This feature requires MarkLogic Server 5.0 or later.
 
 This permits a fairly straightforward technique for single-host parallelism.
 
-    let $presta-id := p:prepare('xquery version "1.0-ml"; xdmp:sleep(1000)')
-    for $i in 1 to 4 return p:spawn(
+    let $presta-id := presta:prepare(
+      'xquery version "1.0-ml"; xdmp:sleep(1000)')
+    for $i in 1 to 4 return presta:spawn(
       $presta-id, (),
       <options xmlns="xdmp:eval">
         <result>true</result>
