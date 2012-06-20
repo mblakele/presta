@@ -25,6 +25,7 @@ module namespace p = "com.blakeley.presta" ;
 declare default function namespace "http://www.w3.org/2005/xpath-functions" ;
 
 declare namespace xe = "xdmp:eval";
+declare namespace server-status = "http://marklogic.com/xdmp/status/server";
 
 import module "http://marklogic.com/xdmp/security"
   at "/MarkLogic/security.xqy" ;
@@ -578,16 +579,15 @@ as item()*
     xdmp:integer-to-hex($id),
     $vars,
     p:options-rewrite($options))
-  else try {
-    (: try-catch interferes with parallelism? :)
+  else if (xdmp:server-status(xdmp:host(),xdmp:server("TaskServer"))/server-status:queue-size[. lt ../server-status:queue-limit])
+  then
     xdmp:spawn(
       xdmp:integer-to-hex($id),
       $vars,
-      p:options-rewrite($options)) }
-  catch ($ex) {
-    if ($ex/error:code eq 'XDMP-MAXTASKS') then () else xdmp:rethrow(),
-    xdmp:sleep($retry),
-    p:spawn($id, $vars, $options, 2 * $retry) }
+      p:options-rewrite($options))
+  else
+    (xdmp:sleep($retry),
+    p:spawn($id, $vars, $options, 2 * $retry) )
 };
 
 declare function p:spawn(
